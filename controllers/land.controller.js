@@ -100,6 +100,65 @@ export const landController = {
     }
   },
 
+  async getLandByCustomUuid(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { data, error } = await supabase
+        .from('land')
+        .select('*')
+        .eq('custom_uuid', custom_uuid)
+        .single();
+
+      if (error) throw error;
+      if (!data) {
+        return res.status(404).json({
+          success: false,
+          message: 'Land not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to fetch land by custom_uuid'
+      });
+    }
+  },
+
+  async getAllLandByUserId(req, res) {
+    try {
+      const { user_uuid } = req.params;
+      const { data, error } = await supabase
+        .from('land')
+        .select('*')
+        .eq('user_uuid', user_uuid);
+
+      if (error) throw error;
+      if (!data) {
+        return res.status(404).json({
+          success: false,
+          message: 'Land not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to fetch land by user_uuid'
+      });
+    }
+  },
+  
+
   // Create land
   async createLand(req, res) {
     try {

@@ -100,6 +100,64 @@ export const propertyController = {
     }
   },
 
+  async getPropertyByCustomUuid(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { data, error } = await supabase
+        .from('property')
+        .select('*')
+        .eq('custom_uuid', custom_uuid)
+        .single();
+
+      if (error) throw error;
+      if (!data) {
+        return res.status(404).json({
+          success: false,
+          message: 'Property not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to fetch property by custom_uuid'
+      });
+    }
+  },
+
+  async getAllPropertyByUserId(req, res) {
+    try {
+      const { user_uuid } = req.params;
+      const { data, error } = await supabase
+        .from('property')
+        .select('*')
+        .eq('user_uuid', user_uuid);
+
+      if (error) throw error;
+      if (!data) {
+        return res.status(404).json({
+          success: false,
+          message: 'Property not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to fetch property by user_uuid'
+      });
+    }
+  },
+
   // Create property
   async createProperty(req, res) {
     try {

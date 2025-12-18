@@ -52,6 +52,35 @@ export const locationController = {
     }
   },
 
+  async getLocationByCustomUuid(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { data, error } = await supabase
+        .from('location')
+        .select('*')
+        .eq('product_uuid', custom_uuid)
+        .single();
+
+      if (error) throw error;
+      if (!data) {
+        return res.status(404).json({
+          success: false,
+          message: 'Location not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to fetch location'
+      });
+    }
+  },
+
   // Create apartment
   async createLocation(req, res) {
     try {
