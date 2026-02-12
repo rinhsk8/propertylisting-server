@@ -169,9 +169,62 @@ export const landController = {
 
       if (error) throw error;
 
+      const created = data[0];
+
+      // Trigger embedding generation for the new land listing (best-effort)
+      try {
+        // Fetch related location (if any) by product_uuid = land.custom_uuid
+        let locationText = '';
+        if (created.custom_uuid) {
+          const { data: locationRow, error: locationError } = await supabase
+            .from('location')
+            .select('*')
+            .eq('product_uuid', created.custom_uuid)
+            .maybeSingle();
+
+          if (!locationError && locationRow) {
+            locationText = Object.values(locationRow)
+              .filter(v => typeof v === 'string')
+              .join(' ');
+          }
+        }
+
+        const facilitiesText = Array.isArray(created.facilities)
+          ? created.facilities.join(' ')
+          : (created.facilities || '');
+
+        const strategicLocationText = Array.isArray(created.strategic_location)
+          ? created.strategic_location.join(' ')
+          : (created.strategic_location || '');
+
+        const combinedContent = [
+          created.title,
+          created.description,
+          created.zone,
+          facilitiesText,
+          strategicLocationText,
+          locationText,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        await supabase.functions.invoke('full_embed', {
+          body: [
+            {
+              id: created.id,
+              table: 'land',
+              embeddingColumn: 'embedding',
+              content: combinedContent,
+            },
+          ],
+        });
+      } catch (embedError) {
+        console.error('Failed to enqueue land embedding job:', embedError);
+      }
+
       res.status(201).json({
         success: true,
-        data: data[0]
+        data: created
       });
     } catch (error) {
       res.status(500).json({
@@ -199,9 +252,62 @@ export const landController = {
         });
       }
 
+      const updated = data[0];
+
+      // Recompute embedding after update (best-effort)
+      try {
+        // Fetch related location (if any) by product_uuid = land.custom_uuid
+        let locationText = '';
+        if (updated.custom_uuid) {
+          const { data: locationRow, error: locationError } = await supabase
+            .from('location')
+            .select('*')
+            .eq('product_uuid', updated.custom_uuid)
+            .maybeSingle();
+
+          if (!locationError && locationRow) {
+            locationText = Object.values(locationRow)
+              .filter(v => typeof v === 'string')
+              .join(' ');
+          }
+        }
+
+        const facilitiesText = Array.isArray(updated.facilities)
+          ? updated.facilities.join(' ')
+          : (updated.facilities || '');
+
+        const strategicLocationText = Array.isArray(updated.strategic_location)
+          ? updated.strategic_location.join(' ')
+          : (updated.strategic_location || '');
+
+        const combinedContent = [
+          updated.title,
+          updated.description,
+          updated.zone,
+          facilitiesText,
+          strategicLocationText,
+          locationText,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        await supabase.functions.invoke('full_embed', {
+          body: [
+            {
+              id: updated.id,
+              table: 'land',
+              embeddingColumn: 'embedding',
+              content: combinedContent,
+            },
+          ],
+        });
+      } catch (embedError) {
+        console.error('Failed to enqueue land embedding job on update:', embedError);
+      }
+
       res.status(200).json({
         success: true,
-        data: data[0]
+        data: updated
       });
     } catch (error) {
       res.status(500).json({

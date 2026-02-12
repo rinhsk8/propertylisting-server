@@ -6,6 +6,7 @@ import apartmentRoutes from './routes/apartment.routes.js';
 import landRoutes from './routes/land.routes.js';
 import locationRoutes from './routes/location.routes.js';
 import authRoutes from './routes/auth.route.js';
+import aiRoutes from './routes/ai.routes.js';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use('/api/apartment', apartmentRoutes);
 app.use('/api/land', landRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/ai-search', aiRoutes);
 // Test route
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to AreProperty API' });

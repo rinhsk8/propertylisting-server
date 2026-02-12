@@ -1,5 +1,77 @@
 import supabase from '../config/supabase.js';
 
+async function recomputeListingEmbeddingForLocation(locationRow) {
+  try {
+    const productUuid = locationRow.product_uuid;
+    if (!productUuid) return;
+
+    // Try to find the related listing by custom_uuid across apartment, property, and land
+    const [
+      { data: apartment, error: aptError },
+      { data: property, error: propError },
+      { data: land, error: landError },
+    ] = await Promise.all([
+      supabase.from('apartment').select('*').eq('custom_uuid', productUuid).maybeSingle(),
+      supabase.from('property').select('*').eq('custom_uuid', productUuid).maybeSingle(),
+      supabase.from('land').select('*').eq('custom_uuid', productUuid).maybeSingle(),
+    ]);
+
+    let table = null;
+    let listing = null;
+
+    if (!aptError && apartment) {
+      table = 'apartment';
+      listing = apartment;
+    } else if (!propError && property) {
+      table = 'property';
+      listing = property;
+    } else if (!landError && land) {
+      table = 'land';
+      listing = land;
+    }
+
+    if (!table || !listing) {
+      return;
+    }
+
+    const facilitiesText = Array.isArray(listing.facilities)
+      ? listing.facilities.join(' ')
+      : (listing.facilities || '');
+
+    const strategicLocationText = Array.isArray(listing.strategic_location)
+      ? listing.strategic_location.join(' ')
+      : (listing.strategic_location || '');
+
+    const locationText = Object.values(locationRow)
+      .filter(v => typeof v === 'string')
+      .join(' ');
+
+    const combinedContent = [
+      listing.title,
+      listing.description,
+      listing.zone,
+      facilitiesText,
+      strategicLocationText,
+      locationText,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    await supabase.functions.invoke('full_embed', {
+      body: [
+        {
+          id: listing.id,
+          table,
+          embeddingColumn: 'embedding',
+          content: combinedContent,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error('Failed to recompute embedding for location change:', err);
+  }
+}
+
 export const locationController = {
   // Get all properties
   async getAllLocation(req, res) {
@@ -81,7 +153,7 @@ export const locationController = {
     }
   },
 
-  // Create apartment
+  // Create location
   async createLocation(req, res) {
     try {
       const { data, error } = await supabase
@@ -91,9 +163,14 @@ export const locationController = {
 
       if (error) throw error;
 
+      const created = data[0];
+
+      // Recompute embedding for related listing (if any)
+      await recomputeListingEmbeddingForLocation(created);
+
       res.status(201).json({
         success: true,
-        data: data[0]
+        data: created
       });
     } catch (error) {
       res.status(500).json({
@@ -103,7 +180,7 @@ export const locationController = {
     }
   },
 
-  // Update apartment
+  // Update location
   async updateLocation(req, res) {
     try {
       const { id } = req.params;
@@ -121,9 +198,14 @@ export const locationController = {
         });
       }
 
+      const updated = data[0];
+
+      // Recompute embedding for related listing (if any)
+      await recomputeListingEmbeddingForLocation(updated);
+
       res.status(200).json({
         success: true,
-        data: data[0]
+        data: updated
       });
     } catch (error) {
       res.status(500).json({
