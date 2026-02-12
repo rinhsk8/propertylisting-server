@@ -117,6 +117,56 @@ export const authController = {
     }
   },
 
+  async getWishlist(req, res) {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) throw new Error('Not authenticated');
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .select('wishlist')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error?.message || 'Unable to get wishlist'
+      });
+    }
+  },
+
+  async updateWishlist(req, res) {
+    try {
+      const { wishlist } = req.body;
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) throw new Error('Not authenticated');
+      const { data, error: profileError } = await supabase
+        .from('profiles')
+        .update({ wishlist })
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (profileError) throw profileError;
+
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error?.message || 'Unable to update wishlist'
+      });
+    }
+  },
+
   async sendVerificationEmail(req, res) {
     try {
       const { email } = req.body;

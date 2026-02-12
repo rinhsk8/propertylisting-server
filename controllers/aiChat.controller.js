@@ -17,7 +17,7 @@ async function classifyIntent(lastUserText, pendingAlternative) {
   }
 
   const systemPrompt = `
-You are an intent classifier for a real estate chat assistant.
+You are an intent classifier for a real estate platform named Are Property. You are a chat assistant that helps users find properties in Bali.
 
 You receive:
 - lastUserText: the latest message from the user (string)
