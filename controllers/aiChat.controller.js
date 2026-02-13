@@ -8,11 +8,10 @@ const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || `http://localhost:${POR
 
 async function classifyIntent(lastUserText, pendingAlternative) {
   if (!process.env.GROQ_API_KEY) {
-    // Fallback: treat everything as a search based on the last user message
     return {
-      intent: 'search',
-      wants_results: true,
-      query: lastUserText || '',
+      intent: 'chitchat',
+      wants_results: false,
+      query: '',
     };
   }
 
@@ -120,8 +119,22 @@ export const aiChatController = {
       const lastUser = [...messages].reverse().find(m => m.role === 'user');
       const lastText = (lastUser?.content || '').toLowerCase();
 
-      const intentInfo = await classifyIntent(lastUser?.content || '', pendingAlternative);
-      let { intent, wants_results, query } = intentInfo;
+      let intent, wants_results, query;
+      try {
+        const intentInfo = await classifyIntent(lastUser?.content || '', pendingAlternative);
+        intent = intentInfo.intent;
+        wants_results = intentInfo.wants_results;
+        query = intentInfo.query;
+      } catch {
+        intent = 'chitchat';
+        wants_results = false;
+        query = '';
+      }
+
+      // Hard intent gate: only search path when intent is search and wants_results is true
+      if (intent !== 'search' || !wants_results) {
+        intent = 'chitchat';
+      }
 
       // Extra safety: simple regex override for yes/no when an alternative is pending,
       // in case the classifier mislabels the intent.
@@ -151,12 +164,10 @@ export const aiChatController = {
         query = lastUser.content;
       }
 
-      // If the classifier thought it's chitchat but the latest user message
-      // clearly contains property-search keywords, upgrade to a search intent.
-      if (
-        intent === 'chitchat' &&
-        /\b(villa|apartment|land|property|house|unit)\b/i.test(lastUser?.content || '')
-      ) {
+      // Only upgrade chitchat to search when BOTH a search verb and a property noun exist.
+      const hasSearchVerb = /\b(find|search|looking for|show me|recommend|get)\b/i.test(lastUser?.content || '');
+      const hasPropertyNoun = /\b(villa|apartment|land|house|unit)\b/i.test(lastUser?.content || '');
+      if (intent === 'chitchat' && hasSearchVerb && hasPropertyNoun) {
         intent = 'search';
         wants_results = true;
         query = lastUser?.content || query;
