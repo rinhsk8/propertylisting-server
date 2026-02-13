@@ -244,6 +244,34 @@ The backend handles ordinal resolution (`first`, `second`, `1st`, `2nd`, `#1`, `
 
 ---
 
+## Formatting: `---` section markers in assistant messages
+
+When the backend returns multi-result summaries, the assistant message may contain `---` as a **section separator** between the intro, each property paragraph, and the closing call-to-action. For example:
+
+```
+Hey, great finds for you! --- My top pick is 'VILLA X' because... --- If you prefer something bigger, 'VILLA Y' is... --- Let me know which one catches your eye!
+```
+
+The frontend should split on `---` and render each section as its own paragraph with spacing. Example React implementation:
+
+```tsx
+function renderAssistantMessage(content: string) {
+  // Split on --- marker and render each section as a separate paragraph
+  const sections = content.split(/\s*---\s*/).filter(Boolean);
+  return (
+    <div className="space-y-3">
+      {sections.map((section, i) => (
+        <p key={i}>{section.trim()}</p>
+      ))}
+    </div>
+  );
+}
+```
+
+This gives clean visual spacing between the intro, each property description, and the CTA — without the LLM needing to produce `\n` characters in JSON.
+
+---
+
 ## Summary of all state
 
 | State | Purpose |

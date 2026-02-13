@@ -355,7 +355,7 @@ function buildDetailSummary(property) {
     return `That ${typeLabel} doesn't have additional detailed information in our records.`;
   }
 
-  return `Here are the details for this ${typeLabel}:\n\n${lines.join('\n')}`;
+  return `Here are the details for this ${typeLabel}: --- ${lines.join(' --- ')}`;
 }
 
 

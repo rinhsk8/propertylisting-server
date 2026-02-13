@@ -500,7 +500,7 @@ The user is browsing properties and you need to pick the top ${displayCount} bes
 
 You must produce TWO things:
 
-1. "summary": A single engaging message (3–6 sentences) that presents ALL your picks to the user in a conversational way. This is what the user reads in the chat. It should:
+1. "summary": A single engaging message that presents ALL your picks to the user in a conversational way. This is what the user reads in the chat. It should:
    - Open with an enthusiastic, natural intro (avoid robotic phrases like "Here are the results").
    - Briefly describe each pick IN ORDER, weaving in why it's ranked where it is (soft reranking). Use the property title or a friendly label for each.
    - For pick #1: highlight why it's the top match.
@@ -508,6 +508,7 @@ You must produce TWO things:
    - End with a warm call-to-action inviting the user to ask about any of them.
    - Keep it concise but lively — like a friend texting you about great finds.
    - When mentioning locations, use the most specific real address info available: subdistrict, village, city (e.g. "in Denpasar Utara" or "in Sanur, Denpasar Selatan"), NOT just the zone code.
+   - IMPORTANT: Use --- as a separator between each section (intro, each property paragraph, and the closing call-to-action). Example: "Hey, great finds for you! --- My top pick is 'VILLA X' because... --- If you prefer something bigger, 'VILLA Y' is... --- Let me know which one catches your eye!"
 
 2. "ranked": An array of objects, one per pick, with a short 1-sentence explanation for each (used as a caption on the property card).
 
