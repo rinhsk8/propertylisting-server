@@ -35,7 +35,58 @@ function normalizeListing(type, row) {
     land_area: row.land_area ?? null,
     facilities,
     strategic_location: strategicLocation,
+    // Location table fields (populated later by attachLocationData)
+    province: null,
+    city: null,
+    subdistrict: null,
+    village: null,
+    location_detail: null,
+    postal_code: null,
+    longitude: null,
+    latitude: null,
   };
+}
+
+// ── Batch-fetch location data for an array of listings and attach it ──
+
+async function attachLocationData(listings) {
+  if (!listings.length) return listings;
+
+  const uuids = listings
+    .map(l => l.custom_uuid)
+    .filter(Boolean);
+
+  if (!uuids.length) return listings;
+
+  const { data: locationRows, error } = await supabase
+    .from('location')
+    .select('*')
+    .in('product_uuid', uuids);
+
+  if (error || !locationRows?.length) return listings;
+
+  // Build a map: product_uuid -> location row
+  const locationMap = {};
+  for (const loc of locationRows) {
+    locationMap[loc.product_uuid] = loc;
+  }
+
+  // Attach location fields to each listing
+  for (const listing of listings) {
+    const loc = locationMap[listing.custom_uuid];
+    if (loc) {
+      listing.province = loc.province ?? null;
+      listing.city = loc.city ?? null;
+      listing.subdistrict = loc.subdistrict ?? null;
+      listing.village = loc.village ?? null;
+      listing.location_detail = loc.location_detail ?? null;
+      listing.postal_code = loc.postal_code ?? null;
+      listing.longitude = loc.longitude ?? null;
+      listing.latitude = loc.latitude ?? null;
+    }
+  }
+
+  return listings;
 }
 
 async function analyzeQueryWithGroq(userQuery) {
@@ -208,6 +259,10 @@ async function runVectorSearch(queryEmbedding, matchCount, queryAnalysis) {
 
   let merged = [...apartments, ...properties, ...lands].filter(Boolean);
 
+  // Attach real location data (province, city, subdistrict, village, etc.)
+  // from the location table BEFORE filtering, so keyword filter can use it.
+  await attachLocationData(merged);
+
   // Apply simple structured filters in JS
   if (minBedrooms != null) {
     merged = merged.filter(
@@ -224,7 +279,8 @@ async function runVectorSearch(queryEmbedding, matchCount, queryAnalysis) {
     });
   }
 
-  // If we have location keywords, require that at least one keyword appears in listing text;
+  // If we have location keywords, require that at least one keyword appears in listing text
+  // (including location table fields: province, city, subdistrict, village, location_detail);
   // otherwise treat it as "no match" instead of silently using a different area.
   if (locationKeywords.length) {
     const loweredKeywords = locationKeywords
@@ -238,8 +294,19 @@ async function runVectorSearch(queryEmbedding, matchCount, queryAnalysis) {
         ? l.strategic_location.join(' ').toLowerCase()
         : String(l.strategic_location || '').toLowerCase();
 
-      const haystack = `${title} ${zone} ${strategic}`;
-      return loweredKeywords.some(k => haystack.includes(k));
+      // Include location table fields in the haystack
+      const province = (l.province || '').toLowerCase();
+      const city = (l.city || '').toLowerCase();
+      const subdistrict = (l.subdistrict || '').toLowerCase();
+      const village = (l.village || '').toLowerCase();
+      const locationDetail = (l.location_detail || '').toLowerCase();
+
+      const haystack = `${title} ${zone} ${strategic} ${province} ${city} ${subdistrict} ${village} ${locationDetail}`;
+      return loweredKeywords.some(k => {
+        // Use word-boundary matching to prevent partial matches (e.g. "Kuta" in "Kutahal")
+        const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`\\b${escaped}\\b`, 'i').test(haystack);
+      });
     });
 
     if (!withLocationMatch.length) {
@@ -252,6 +319,27 @@ async function runVectorSearch(queryEmbedding, matchCount, queryAnalysis) {
 
   // Keep only top-N across tables (vector search already ordered by similarity in each table)
   return merged.slice(0, matchCount);
+}
+
+// ── Tiered display: count criteria to decide how many results to show ──
+
+function countSearchCriteria(queryAnalysis) {
+  let count = 0;
+  // Location specified (e.g. "Canggu", "Ubud")
+  if (queryAnalysis.location_keywords.length > 0) count++;
+  // Bedroom constraint (e.g. "3 bedrooms")
+  if (queryAnalysis.min_bedrooms != null) count++;
+  // Land area constraint (e.g. "500 m²")
+  if (queryAnalysis.min_land_area != null) count++;
+  // Each hard constraint (e.g. "pool", "furnished", "garden")
+  count += queryAnalysis.hard_constraints.length;
+  return count;
+}
+
+function getDisplayCount(criteriaCount) {
+  if (criteriaCount === 0) return 5;   // vague: "show me villas" → browse 5
+  if (criteriaCount <= 2) return 3;    // moderate: "villa in Canggu with pool" → 3 options
+  return 1;                            // specific: 3+ criteria → single best match
 }
 
 async function generateExplanations(userQuery, listings) {
@@ -276,6 +364,11 @@ async function generateExplanations(userQuery, listings) {
     land_area: l.land_area,
     facilities: l.facilities,
     strategic_location: l.strategic_location,
+    province: l.province,
+    city: l.city,
+    subdistrict: l.subdistrict,
+    village: l.village,
+    location_detail: l.location_detail,
   }));
 
   const systemPrompt = `
@@ -287,6 +380,7 @@ Hard requirements:
 - You MUST respect the user's intent about type. For example, if they ask for "land", do NOT pick an apartment or villa.
 - You MUST NOT invent geography or distances (do not say "X is close to Y" unless that is explicitly stated in the listing fields).
 - If none of the provided listings are a good match, you MUST return best.custom_uuid = null and explanation explaining there is no good match.
+- Each listing may include location fields: province, city, subdistrict, village, location_detail. Use these to determine the real location of the property (e.g. if subdistrict is "Denpasar Utara", the property IS in Denpasar Utara even if the title says something else).
 
 Respond strictly as JSON with this exact shape:
 {
@@ -297,7 +391,7 @@ Respond strictly as JSON with this exact shape:
 }
 
 If you choose a listing, its "custom_uuid" MUST be one of the provided listings.
-The explanation should be 1–3 short sentences focused only on information actually present in the listing fields (title, price, zone, bed_room, bath_room, building_area, land_area, facilities, strategic_location).
+The explanation should be 1–3 short sentences focused only on information actually present in the listing fields (title, price, zone, bed_room, bath_room, building_area, land_area, facilities, strategic_location, province, city, subdistrict, village).
 If there is no good match, set "custom_uuid" to null and explain briefly why.
   `.trim();
 
@@ -322,7 +416,7 @@ ${JSON.stringify(simplified)}
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.3,
+      temperature: 0,
     }),
   });
 
@@ -361,6 +455,145 @@ ${JSON.stringify(simplified)}
   ];
 }
 
+// ── Multi-result ranking with engaging, reranking-aware explanations ──
+
+async function rankAndExplainMultiple(userQuery, listings, displayCount) {
+  // If only 1 needed, delegate to the single-best-match function
+  if (displayCount === 1) {
+    const singleResults = await generateExplanations(userQuery, listings);
+    return {
+      results: singleResults,
+      summary: singleResults.length ? singleResults[0].explanation : null,
+    };
+  }
+
+  if (!process.env.GROQ_API_KEY) {
+    return {
+      results: listings.slice(0, displayCount).map(l => ({ ...l, explanation: null })),
+      summary: null,
+    };
+  }
+
+  const simplified = listings.map(l => ({
+    custom_uuid: l.custom_uuid,
+    listing_type: l.listing_type,
+    title: l.title,
+    description: l.description,
+    price: l.price,
+    zone: l.zone,
+    bed_room: l.bed_room,
+    bath_room: l.bath_room,
+    building_area: l.building_area,
+    land_area: l.land_area,
+    facilities: l.facilities,
+    strategic_location: l.strategic_location,
+    province: l.province,
+    city: l.city,
+    subdistrict: l.subdistrict,
+    village: l.village,
+    location_detail: l.location_detail,
+  }));
+
+  const systemPrompt = `
+You are a friendly, knowledgeable real estate assistant with an engaging personality.
+The user is browsing properties and you need to pick the top ${displayCount} best matches from the candidates, ranked from best to good.
+
+You must produce TWO things:
+
+1. "summary": A single engaging message (3–6 sentences) that presents ALL your picks to the user in a conversational way. This is what the user reads in the chat. It should:
+   - Open with an enthusiastic, natural intro (avoid robotic phrases like "Here are the results").
+   - Briefly describe each pick IN ORDER, weaving in why it's ranked where it is (soft reranking). Use the property title or a friendly label for each.
+   - For pick #1: highlight why it's the top match.
+   - For picks #2+: contrast or complement against the ones above (e.g. "If you prefer more space…", "For a more budget-friendly option…", "This one stands out because…").
+   - End with a warm call-to-action inviting the user to ask about any of them.
+   - Keep it concise but lively — like a friend texting you about great finds.
+   - When mentioning locations, use the most specific real address info available: subdistrict, village, city (e.g. "in Denpasar Utara" or "in Sanur, Denpasar Selatan"), NOT just the zone code.
+
+2. "ranked": An array of objects, one per pick, with a short 1-sentence explanation for each (used as a caption on the property card).
+
+ONLY reference facts actually present in the listing data (including location fields like province, city, subdistrict, village, location_detail). NEVER invent distances, amenities, or location details not in the fields.
+
+Hard rules:
+- Respect the user's intent about type. If they ask for "land", do NOT pick apartments or villas.
+- Each custom_uuid MUST be from the provided listings. No duplicates.
+- If fewer than ${displayCount} listings are genuinely good matches, return only the good ones (at least 1).
+- If NONE of the listings match, return an empty "ranked" array and set summary to a brief "no match" message.
+- Each listing may include location fields: province, city, subdistrict, village, location_detail. Use these to determine the real location (e.g. if subdistrict is "Denpasar Utara", the property IS in Denpasar Utara).
+
+Respond strictly as JSON:
+{
+  "summary": string,
+  "ranked": [
+    { "custom_uuid": string, "explanation": string },
+    ...
+  ]
+}
+  `.trim();
+
+  const userPrompt = `
+User query:
+${userQuery}
+
+Candidate listings (JSON array):
+${JSON.stringify(simplified)}
+  `.trim();
+
+  const response = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Groq ranking error: ${response.status} ${response.statusText}`);
+  }
+
+  const json = await response.json();
+  const content = json.choices?.[0]?.message?.content;
+
+  let parsed;
+  try {
+    parsed = typeof content === 'string' ? JSON.parse(content) : content;
+  } catch {
+    throw new Error('Failed to parse Groq ranking JSON');
+  }
+
+  const ranked = Array.isArray(parsed?.ranked) ? parsed.ranked : [];
+  const summary = typeof parsed?.summary === 'string' ? parsed.summary : null;
+
+  if (!ranked.length) {
+    return { results: [], summary: null };
+  }
+
+  // Map back to full listing objects, preserving LLM rank order
+  const results = [];
+  for (const item of ranked) {
+    const listing = listings.find(l => l.custom_uuid === item.custom_uuid);
+    if (listing) {
+      results.push({
+        ...listing,
+        explanation: item.explanation ?? null,
+      });
+    }
+  }
+
+  return {
+    results: results.slice(0, displayCount),
+    summary,
+  };
+}
+
 async function generateAlternativeSuggestion(userQuery, listings, queryAnalysis) {
   if (!process.env.GROQ_API_KEY) {
     return null;
@@ -379,11 +612,17 @@ async function generateAlternativeSuggestion(userQuery, listings, queryAnalysis)
     land_area: l.land_area,
     facilities: l.facilities,
     strategic_location: l.strategic_location,
+    province: l.province,
+    city: l.city,
+    subdistrict: l.subdistrict,
+    village: l.village,
+    location_detail: l.location_detail,
   }));
 
   const systemPrompt = `
 You are a real estate AI assistant.
 The user asked for properties that could not be matched exactly (for example, no listing mentions the exact requested location).
+Each listing may include location fields: province, city, subdistrict, village, location_detail. Use these to determine the real location of the property.
 
 You are given:
 - The original user query.
@@ -534,11 +773,15 @@ export const aiSearchController = {
         });
       }
 
-      // 3. Ask Groq to select the single best strict match and explain it
-      const bestListingWithExplanation = await generateExplanations(trimmedQuery, listings);
+      // 3. Determine how many results to show based on query specificity
+      const criteriaCount = countSearchCriteria(queryAnalysis);
+      const displayCount = getDisplayCount(criteriaCount);
+
+      // 4. Rank and explain the top N listings
+      const { results: rankedListings, summary } = await rankAndExplainMultiple(trimmedQuery, listings, displayCount);
 
       // Only return minimal data to the frontend: custom_uuid + listing_type + explanation.
-      const minimal = bestListingWithExplanation.map(l => ({
+      const minimal = rankedListings.map(l => ({
         custom_uuid: l.custom_uuid,
         listing_type: l.listing_type,
         explanation: l.explanation ?? null,
@@ -547,6 +790,8 @@ export const aiSearchController = {
       return res.status(200).json({
         success: true,
         data: minimal,
+        summary,
+        displayCount,
       });
     } catch (error) {
       console.error('AI search error:', error);
