@@ -13,7 +13,7 @@ router.get('/user/:user_uuid', getAllApartmentByUserId);
 router.post('/', createApartment);
 router.put('/:id', updateApartment);
 router.patch('/status/:custom_uuid', updateApartmentStatus);
-router.delete('/:id', deleteApartment);
+router.delete('/:custom_uuid', deleteApartment);
 router.post('/upload', uploadImage);
 
 export default router; 

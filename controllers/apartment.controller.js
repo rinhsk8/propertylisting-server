@@ -357,11 +357,11 @@ export const apartmentController = {
   // Delete apartment
   async deleteApartment(req, res) {
     try {
-      const { id } = req.params;
+      const { custom_uuid } = req.params;
       const { error } = await supabase
         .from('apartment')
         .delete()
-        .eq('id', id);
+        .eq('custom_uuid', custom_uuid);
 
       if (error) throw error;
 

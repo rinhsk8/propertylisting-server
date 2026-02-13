@@ -356,11 +356,11 @@ export const propertyController = {
   // Delete property
   async deleteProperty(req, res) {
     try {
-      const { id } = req.params;
+      const { custom_uuid } = req.params;
       const { error } = await supabase
         .from('property')
         .delete()
-        .eq('id', id);
+        .eq('custom_uuid', custom_uuid);
 
       if (error) throw error;
 

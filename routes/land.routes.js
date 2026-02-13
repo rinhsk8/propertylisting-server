@@ -13,7 +13,7 @@ router.get('/user/:user_uuid', getAllLandByUserId);
 router.post('/', createLand);
 router.put('/:id', updateLand);
 router.patch('/status/:custom_uuid', updateLandStatus);
-router.delete('/:id', deleteLand);
+router.delete('/:custom_uuid', deleteLand);
 router.post('/upload', uploadImage);
 
 export default router; 

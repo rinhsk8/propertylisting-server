@@ -218,11 +218,11 @@ export const locationController = {
   // Delete apartment
   async deleteLocation(req, res) {
     try {
-      const { id } = req.params;
+      const { custom_uuid } = req.params;
       const { error } = await supabase
         .from('location')
         .delete()
-        .eq('id', id);
+        .eq('product_uuid', custom_uuid);
 
       if (error) throw error;
 

@@ -10,6 +10,6 @@ router.get('/:id', getLocation);
 router.get('/customuuid/:custom_uuid', getLocationByCustomUuid);
 router.post('/', createLocation);
 router.put('/:id', updateLocation);
-router.delete('/:id', deleteLocation);
+router.delete('/:custom_uuid', deleteLocation);
 
 export default router; 
