@@ -315,6 +315,44 @@ export const apartmentController = {
       });
     }
   },
+  // Update apartment status only (by custom_uuid)
+  async updateApartmentStatus(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { status } = req.body;
+
+      if (!['sold', 'available'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'status must be "sold" or "available"'
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('apartment')
+        .update({ status })
+        .eq('custom_uuid', custom_uuid)
+        .select();
+
+      if (error) throw error;
+      if (!data?.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Apartment not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data[0]
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to update apartment status'
+      });
+    }
+  },
 
   // Delete apartment
   async deleteApartment(req, res) {

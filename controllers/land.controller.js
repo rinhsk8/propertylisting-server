@@ -317,6 +317,44 @@ export const landController = {
     }
   },
 
+  async updateLandStatus(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { status } = req.body;
+
+      if (!['sold', 'available'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'status must be "sold" or "available"'
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('land')
+        .update({ status })
+        .eq('custom_uuid', custom_uuid)
+        .select();
+
+      if (error) throw error;
+      if (!data?.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Land not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data[0]
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to update land status'
+      });
+    }
+  }, 
+
   // Delete land
   async deleteLand(req, res) {
     try {
