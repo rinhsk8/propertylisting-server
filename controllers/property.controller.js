@@ -351,7 +351,46 @@ export const propertyController = {
         message: error?.message || 'Unable to update property status'
       });
     }
+  }, 
+
+  async updatePropertyApprovalStatus(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { approval_status } = req.body;
+
+      if (!['approved', 'pending', 'rejected'].includes(approval_status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'approval_status must be "approved", "pending" or "rejected"'
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('property')
+        .update({ approval_status })
+        .eq('custom_uuid', custom_uuid)
+        .select();
+
+      if (error) throw error;
+      if (!data?.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Property not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data[0]
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to update property approval status'
+      });
+    }
   },
+
 
   // Delete property
   async deleteProperty(req, res) {

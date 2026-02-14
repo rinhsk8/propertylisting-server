@@ -354,6 +354,44 @@ export const landController = {
       });
     }
   }, 
+  
+  async updateLandApprovalStatus(req, res) {
+    try {
+      const { custom_uuid } = req.params;
+      const { approval_status } = req.body;
+
+      if (!['approved', 'pending', 'rejected'].includes(approval_status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'approval_status must be "approved", "pending" or "rejected"'
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('land')
+        .update({ approval_status })
+        .eq('custom_uuid', custom_uuid)
+        .select();
+
+      if (error) throw error;
+      if (!data?.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Land not found'
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: data[0]
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to update land approval status'
+      });
+    }
+  },
 
   // Delete land
   async deleteLand(req, res) {

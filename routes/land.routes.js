@@ -3,7 +3,7 @@ import { landController } from '../controllers/land.controller.js';
 
 const router = Router();
 
-const { getAllLand, getLand, createLand, updateLand, updateLandStatus, deleteLand, uploadImage, getNewLandCustomUuid, getLandByCustomUuid, getAllLandByUserId } = landController;
+const { getAllLand, getLand, createLand, updateLand, updateLandStatus, updateLandApprovalStatus, deleteLand, uploadImage, getNewLandCustomUuid, getLandByCustomUuid, getAllLandByUserId } = landController;
 
 router.get('/', getAllLand);
 router.get('/newcustomid', getNewLandCustomUuid);
@@ -13,6 +13,7 @@ router.get('/user/:user_uuid', getAllLandByUserId);
 router.post('/', createLand);
 router.put('/:id', updateLand);
 router.patch('/status/:custom_uuid', updateLandStatus);
+router.patch('/approval-status/:custom_uuid', updateLandApprovalStatus);
 router.delete('/:custom_uuid', deleteLand);
 router.post('/upload', uploadImage);
 

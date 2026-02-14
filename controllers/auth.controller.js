@@ -141,6 +141,54 @@ export const authController = {
     }
   },
 
+  async getAllProfiles(req, res) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*');
+        
+      if (error) throw error;
+
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error?.message || 'Unable to get all profiles'
+      });
+    }
+  }, 
+
+  async updateProfile(req, res) {
+    try {
+      const { id } = req.params;
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(req.body)
+        .eq('id', id)
+        .select();
+      if (error) throw error;
+      if (!data?.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Profile not found'
+        });
+      }
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error?.message || 'Unable to update profile'
+      });
+    }
+  },
+
+
   async updateWishlist(req, res) {
     try {
       const { wishlist } = req.body;
@@ -252,6 +300,7 @@ export const authController = {
       });
     }
   },
+
   async signOut(req, res) {
     try {
       const { error } = await supabase.auth.signOut();
@@ -260,5 +309,50 @@ export const authController = {
     } catch (error) {
       res.status(401).json({ success: false, error: error?.message || 'Unable to logout' });
     }
+  },
+
+  async uploadImage(req, res) {
+    try {
+      const { base64Image, fileName } = req.body;
+
+      // Convert base64 to blob
+      const base64Response = await fetch(base64Image);
+      const blob = await base64Response.blob();
+
+      // Format the filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const sanitizedFileName = fileName
+        .replace(/[^a-zA-Z0-9-_]/g, '_')
+        .toLowerCase();
+      const finalFileName = `${sanitizedFileName}-${timestamp}`;
+
+      // Upload to Supabase storage
+      const { error: uploadError, data } = await supabase.storage
+        .from('profiles')
+        .upload(finalFileName, blob);
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profiles')
+        .getPublicUrl(finalFileName);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          url: publicUrl
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error?.message || 'Unable to upload image'
+      });
+    }
   }
+
 }; 
+
