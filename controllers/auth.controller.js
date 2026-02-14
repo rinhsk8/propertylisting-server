@@ -28,31 +28,81 @@ export const authController = {
       }
 
       console.log('Auth successful, creating profile...'); // Log before profile creation
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: authData.user?.id,
-            full_name,
-            phone,
-            address
-          }
-        ])
-        .select()
-        .single();
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        throw profileError;
+      const userId = authData.user?.id;
+      const { data: existingProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('id, status')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error('Profile fetch error:', fetchError);
+        throw fetchError;
       }
 
-      console.log('Profile created successfully'); // Log success
-      res.status(201).json({
-        success: true,
-        data: {
-          user: profileData,
-          session: authData.session
+      if (!existingProfile) {
+        // No profile: create new one
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: userId,
+              full_name,
+              email,
+              phone,
+              address
+            }
+          ])
+          .select()
+          .single();
+
+        if (profileError) {
+          console.error('Profile creation error:', profileError);
+          throw profileError;
         }
+
+        console.log('Profile created successfully');
+        return res.status(201).json({
+          success: true,
+          data: {
+            user: profileData,
+            session: authData.session
+          }
+        });
+      }
+
+      if (existingProfile.status === 'unverified') {
+        // Unverified profile: update it with new signup data
+        const { data: updatedData, error: updateError } = await supabase
+          .from('profiles')
+          .update({ full_name, email, phone, address })
+          .eq('id', userId)
+          .select();
+
+        if (updateError) {
+          console.error('Profile update error:', updateError);
+          throw updateError;
+        }
+        if (!updatedData?.length) {
+          return res.status(404).json({
+            success: false,
+            message: 'Profile not found'
+          });
+        }
+        return res.status(200).json({
+          success: true,
+          data: {
+            user: updatedData[0],
+            session: authData.session
+          }
+        });
+      }
+
+      // Profile exists and is not unverified → account already exists
+      return res.status(409).json({
+        success: false,
+        error: 'Account already exists'
       });
     } catch (error) {
       const message = error?.message || 'Unable to complete signup';
@@ -87,6 +137,78 @@ export const authController = {
       res.status(401).json({
         success: false,
         error: error?.message || 'Invalid credentials'
+      });
+    }
+  },
+
+  async requestPasswordReset(req, res) {
+    try {
+      const { email, redirectTo } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email is required'
+        });
+      }
+
+      const options = redirectTo ? { redirectTo } : {};
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, options);
+
+      if (error) throw error;
+
+      res.status(200).json({
+        success: true,
+        message: 'Check your email for the password reset link'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error?.message || 'Unable to send reset email'
+      });
+    }
+  },
+
+  async updatePassword(req, res) {
+    try {
+      const { code, access_token, refresh_token, new_password } = req.body;
+
+      if (!new_password) {
+        return res.status(400).json({
+          success: false,
+          error: 'New password is required'
+        });
+      }
+
+      if (code) {
+        // Frontend sent the code from the reset link URL; exchange it for a session
+        const { data: sessionData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) throw exchangeError;
+      } else if (access_token && refresh_token) {
+        // Frontend sent tokens (e.g. from hash fragment)
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token
+        });
+        if (sessionError) throw sessionError;
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: 'Either code or access_token and refresh_token are required'
+        });
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: new_password });
+      if (error) throw error;
+
+      res.status(200).json({
+        success: true,
+        message: 'Password updated successfully'
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: error?.message || 'Unable to update password'
       });
     }
   },
@@ -252,6 +374,16 @@ export const authController = {
 
       if (error) throw error;
 
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ status: 'verified' })
+        .eq('email', email);
+
+      if (profileError) {
+        console.error('Profile status update error:', profileError);
+        throw profileError;
+      }
+
       res.status(200).json({
         success: true,
         message: 'Email verified successfully'
@@ -271,7 +403,7 @@ export const authController = {
       if (error) throw error;
 
       if (!session) {
-        return res.status(401).json({
+        return res.status(200).json({
           success: false,
           message: 'No active session found'
         });

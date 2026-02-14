@@ -3,10 +3,12 @@ import { authController } from '../controllers/auth.controller.js';
 
 const router = Router();
 
-const {signUp, signIn, getProfile, getAllProfiles, getWishlist, updateWishlist, updateProfile, sendVerificationEmail, verifyOTP, checkSession, signOut, uploadImage} = authController;
+const {signUp, signIn, requestPasswordReset, updatePassword, getProfile, getAllProfiles, getWishlist, updateWishlist, updateProfile, sendVerificationEmail, verifyOTP, checkSession, signOut, uploadImage} = authController;
 
 router.post('/signup', signUp);
 router.post('/signin', signIn);
+router.post('/request-password-reset', requestPasswordReset);
+router.post('/update-password', updatePassword);
 router.get('/profile', getProfile);
 router.get('/all-profiles', getAllProfiles);
 router.get('/get-wishlist', getWishlist);
